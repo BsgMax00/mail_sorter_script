@@ -1,0 +1,39 @@
+{
+    "Sort": {
+        "Specials": [
+            "no-reply",
+            "noreply"
+        ],
+        "Extra's": [
+            "Discord",
+            "GitHub",
+            "Microsoft",
+            "Steam"
+        ],
+        "Payments": [
+            "Google Play",
+            "Skrill",
+            "steam support",
+            "YouTube"
+        ],
+        "Subscriptions": [
+            "BestFans",
+            "Ci-en",
+            "DLsite",
+            "Fantia",
+            "Fanza",
+            "ko-fi",
+            "OnlyFans",
+            "pixivFANBOX",
+            "BOOTH",
+            "ko-fi"
+        ]
+    },
+    "Remove":[
+        "gogroopie",
+        "pintrest",
+        "chess",
+        "quora",
+        "wish"
+    ]
+}
