@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import BatchHttpRequest, BatchError
 
 def BuildService():
-    # not my code (straight from the official gmail api docs)
+    # how to build the service is not my code (it comes straight from the official gmail api docs)
     # more info about how this works should be gotten from the api docs.
     # url: https://developers.google.com/gmail/api/quickstart/python
     creds = None
@@ -19,8 +19,9 @@ def BuildService():
     if os.path.exists("files/token.json"):
         creds = Credentials.from_authorized_user_file("files/token.json", scopes)
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+        if creds and creds.expired and creds.refresh_token and os.path.exists("files/token.json"):
+            os.remove("files/token.json")
+            BuildService()
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 "files/credentials.json", scopes
@@ -30,21 +31,11 @@ def BuildService():
             token.write(creds.to_json())
     
     service = build('gmail', 'v1', credentials=creds)
+    print("Service has been build.")
     return service
 
 def BuildScopes():
-    load_dotenv()
-
-    config = dotenv_values()
-    scopes = json.loads(config['SCOPES'])
-    return scopes
-
-
-
-def ExecuteBatchRequest(requests):
-    batch = BatchHttpRequest(batch_uri = 'https://gmail.googleapis.com/batch')
-
-    for request in requests:
-        batch.add(request)
+    with open("files/scopes.json", "r") as scopeList:
+        scopes = json.load(scopeList)["scopes"]
     
-    batch.execute()
+    return scopes

@@ -1,79 +1,116 @@
-import os.path
-import json
-
+#import helper classes
 from serviceHelper import BuildService
+from labelHelper import BuildSortingLabels, BuildRemovableLabels
 
-from dotenv import load_dotenv, dotenv_values
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+def main():
+    print("Program has started.")
 
-def Main():
+    sortingLabels = BuildSortingLabels()
+    removableLabels = BuildRemovableLabels()
     service = BuildService()
 
     if service == None:
+        print("service was unable to be made.")
         return
+    
+    UpdateGmailLabels(service, sortingLabels)
+    mails = CollectAllMails(service)
+    SortMails(service, mails, sortingLabels)
+    DeleteMails(service, mails, removableLabels)
+    print("Program has succesfully finished.")
+    
+def UpdateGmailLabels(service, labels):
+    print("Started updating labels.")
+    existing_labels = service.users().labels().list(userId='me').execute()
 
-def GetAllMailIds(service):
-    results = []
-    next_page_token = None
-    while next_page_token is not None or results == []:
-        mails = service.users().messages().list(userId='me', pageToken=next_page_token).execute()
-        if 'nextPageToken' in mails:
-            next_page_token = mails['nextPageToken']
+    for label in labels:
+        exists = False
+        for existing_label in existing_labels['labels']:
+            if label == existing_label['name']:
+                exists = True
+                break
+        
+        if not exists:
+            new_label = {
+                'name': label,
+                'labelListVisibility': 'labelShow',
+                'messageListVisibility': 'show'
+            }
+            service.users().labels().create(userId='me', body=new_label).execute()
+    print("Finished updating labels.")
+
+def SortMails(service, mails, labels):
+    print("Started sorting all mails in inbox.")
+    for mail in mails:
+        sortingLabel = FindSortingLabel(mail, labels)
+
+        if sortingLabel is not None:
+            sortingLabelId = FindSortingLabelId(service, sortingLabel)
+            new_label_body = {
+                'addLabelIds': sortingLabelId,
+                'removeLabelIds': 'INBOX'
+            }
+            service.users().messages().modify(userId='me', id=mail['id'], body=new_label_body).execute()
+            mails.remove(mail)
+    print("Finished sorting all mails in inbox")
+
+def DeleteMails(service, mails, labels):
+    print("Started deleting all mails that have to be removed.")
+    for mail in mails:
+        sortingLabel = FindSortingLabel(mail, labels)
+
+        if sortingLabel is not None:
+            service.users().messages().delete(userId='me', id=mail['id']).execute()
+            mails.remove(mail)
+    print("Finished deleting all mails that had to be removed.")
+
+def CollectAllMails(service):
+    print("Started Collecting all mails.")
+    messageIds = []
+    containsNextPageToken = True
+    nextPageToken = ''
+
+    while(containsNextPageToken):
+        messages = service.users().messages().list(userId='me', pageToken=nextPageToken).execute()
+        messageIds += messages['messages']
+
+        if 'nextPageToken' in messages:
+            nextPageToken = messages['nextPageToken']
         else:
-            next_page_token = None
-        results.extend(mails['messages'])
+            containsNextPageToken = False
 
-    return results
+    print(f"Program has collected {len(messageIds)} amount of email ID's.")
 
-def GetMailInfoById(service, id):
-    mail = service.users().messages().get(userId='me', id=id).execute()
-    return mail
-
-def GetAllMailInfo(service):
-    all_mail_ids = GetAllMailIds(service)
     mails = []
 
-    for mail in all_mail_ids:
-        mail_id = mail['id']
-        mail_info = GetMailInfoById(service, mail_id)
-        mails.append(mail_info)
+    batchMessageIds = [messageIds[i:i + 50] for i in range(0, len(messageIds), 50)]
 
+    for index, messageId in enumerate(batchMessageIds):
+        print(f'{index + 1} / {len(batchMessageIds)}')
+        for id in messageId:
+            mail = service.users().messages().get(userId='me', id=id['id']).execute()
+            if 'labelIds' not in mail or 'INBOX' in mail['labelIds']:
+                mails.append(mail)
+
+    print("All mails have been collected.")
     return mails
 
-def SortAllMails(service, labels):
-    mails = GetAllMailInfo(service)
-    all_labels = service.users().labels().list(userId='me').execute()
+def FindSortingLabel(mail, labels):
+        sortingLabel = None
 
-    for mail in mails:
-        sorting_label = None
-        sorting_label_id = None
-        mail_id = mail['id']
-        mail_headers = mail['payload']['headers']
-        mail_labels = mail['labelIds']
+        for header in mail['payload']['headers']:
+            if header['name'] == 'From':
+                for label in labels:
+                    if header['value'].lower().__contains__(label.lower().split('/')[-1]):
+                        sortingLabel = label
 
-        if 'INBOX' in mail_labels:
-            for header in mail_headers:
-                if header['name'] == 'From':
-                    for label in labels:
-                        if header['value'].lower().__contains__(label.lower()):
-                            sorting_label = label
+        return sortingLabel
 
-            if sorting_label is not None:
-                for label in all_labels['labels']:
-                    if label['name'].__contains__(sorting_label):
-                        sorting_label_id = label['id']
+def FindSortingLabelId(service, label):
+    existingLabels = service.users().labels().list(userId='me').execute()
 
-                new_label_body = {
-                    'removeLabelIds': 'INBOX',
-                    'addLabelIds': sorting_label_id
-                }
-                service.users().messages().modify(userId='me', id=mail_id, body=new_label_body).execute()
+    for existingLabel in existingLabels['labels']:
+        if label in existingLabel['name'] :
+            return existingLabel['id']
 
-    test = None
-    return test
-
-if __name__ == '__main__':
-    Main()
+main()
